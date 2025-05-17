@@ -19,7 +19,6 @@ class RouteInfoPanel extends StatelessWidget {
     }
   }
 
-  // Calcular tiempo estimado (asumiendo 5km/h para caminar)
   // Calcular tiempo estimado para mototaxi (velocidad promedio 30 km/h)
   String _estimateTime() {
     // 30 km/h = 500 metros por minuto
@@ -69,9 +68,22 @@ class RouteInfoPanel extends StatelessWidget {
             const SizedBox(height: 8),
             Row(
               children: [
-                const Icon(Icons.timer, color: Colors.blue),
+                const Icon(Icons.motorcycle, color: Colors.blue),
                 const SizedBox(width: 8),
                 Text('Tiempo estimado: ${_estimateTime()}'),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Row(
+              children: [
+                Icon(Icons.info_outline, color: Colors.orange),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Ruta calculada solo por calles para vehículos',
+                    style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+                  ),
+                ),
               ],
             ),
           ],

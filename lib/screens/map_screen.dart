@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:trip_routing/trip_routing.dart';
+import '../services/vehicle_trip_service.dart';
 import '../widgets/route_info_panel.dart';
 
 class MapScreen extends StatefulWidget {
@@ -16,8 +16,8 @@ class _MapScreenState extends State<MapScreen> {
   // Controller para el mapa
   final MapController _mapController = MapController();
 
-  // Servicio de rutas
-  final TripService _tripService = TripService();
+  // Servicio de rutas para vehículos
+  final VehicleTripService _tripService = VehicleTripService();
 
   // Estado de la ubicación y ruta
   LatLng? _currentPosition;
@@ -84,10 +84,43 @@ class _MapScreenState extends State<MapScreen> {
     setState(() => _isCalculatingRoute = true);
 
     try {
+      // Verificar si los puntos están en carreteras para vehículos
+      final bool startIsValid = await _tripService.isOnVehicleRoad(
+        _startPoint!,
+      );
+      final bool endIsValid = await _tripService.isOnVehicleRoad(_endPoint!);
+
+      // Si alguno no está en carretera, mostramos un mensaje y ajustamos los puntos
+      if (!startIsValid || !endIsValid) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              "Algunos puntos no están en calles para vehículos. Ajustando a la calle más cercana.",
+            ),
+            duration: Duration(seconds: 3),
+          ),
+        );
+
+        // Ajustar los puntos a carreteras para vehículos
+        final LatLng snappedStart = await _tripService.snapToVehicleRoad(
+          _startPoint!,
+        );
+        final LatLng snappedEnd = await _tripService.snapToVehicleRoad(
+          _endPoint!,
+        );
+
+        // Actualizar los marcadores en el mapa
+        setState(() {
+          _startPoint = snappedStart;
+          _endPoint = snappedEnd;
+        });
+      }
+
+      // Ahora calcular la ruta
       final trip = await _tripService.findTotalTrip(
         [_startPoint!, _endPoint!],
-        preferWalkingPaths: true,
-        replaceWaypointsWithBuildingEntrances: true,
+        preferWalkingPaths: false,
+        replaceWaypointsWithBuildingEntrances: false,
       );
 
       setState(() {
@@ -98,6 +131,16 @@ class _MapScreenState extends State<MapScreen> {
 
       // Ajustar zoom para mostrar toda la ruta
       _fitRouteBounds();
+
+      if (trip.route.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              "No se pudo encontrar una ruta viable para vehículos",
+            ),
+          ),
+        );
+      }
     } catch (e) {
       print("Error calculating route: $e");
       setState(() => _isCalculatingRoute = false);
@@ -147,7 +190,7 @@ class _MapScreenState extends State<MapScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Trip Router'),
+        title: const Text('Trip Router para Mototaxis'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
       body:
@@ -313,6 +356,16 @@ class _MapScreenState extends State<MapScreen> {
                                   fontWeight: FontWeight.bold,
                                   fontSize: 16,
                                 ),
+                              ),
+                              const SizedBox(height: 4),
+                              const Text(
+                                "Los puntos se ajustarán automáticamente a la calle para vehículos más cercana",
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontStyle: FontStyle.italic,
+                                  color: Colors.orange,
+                                ),
+                                textAlign: TextAlign.center,
                               ),
                               const SizedBox(height: 8),
                               Text(
