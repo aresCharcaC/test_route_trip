@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import '../services/vehicle_trip_service.dart';
+import '../services/geocoding_service.dart'; // ← NUEVA IMPORTACIÓN
 import '../widgets/route_info_panel.dart';
 
 class MapScreen extends StatefulWidget {
@@ -26,6 +27,12 @@ class _MapScreenState extends State<MapScreen> {
   List<LatLng> _routePoints = [];
   double _routeDistance = 0;
 
+  // ← NUEVAS VARIABLES PARA NOMBRES DE CALLES
+  String _startPointName = '';
+  String _endPointName = '';
+  bool _isLoadingStartName = false;
+  bool _isLoadingEndName = false;
+
   // Estado de carga
   bool _isLoading = true;
   bool _isCalculatingRoute = false;
@@ -34,6 +41,40 @@ class _MapScreenState extends State<MapScreen> {
   void initState() {
     super.initState();
     _getCurrentLocation();
+  }
+
+  // ← NUEVO MÉTODO PARA ACTUALIZAR NOMBRES
+  Future<void> _updatePointName(LatLng point, bool isStartPoint) async {
+    setState(() {
+      if (isStartPoint) {
+        _isLoadingStartName = true;
+      } else {
+        _isLoadingEndName = true;
+      }
+    });
+
+    try {
+      final name = await GeocodingService.getShortDescription(point);
+      setState(() {
+        if (isStartPoint) {
+          _startPointName = name;
+          _isLoadingStartName = false;
+        } else {
+          _endPointName = name;
+          _isLoadingEndName = false;
+        }
+      });
+    } catch (e) {
+      setState(() {
+        if (isStartPoint) {
+          _startPointName = 'Ubicación de inicio';
+          _isLoadingStartName = false;
+        } else {
+          _endPointName = 'Ubicación de destino';
+          _isLoadingEndName = false;
+        }
+      });
+    }
   }
 
   // Obtener la ubicación actual del usuario
@@ -109,11 +150,15 @@ class _MapScreenState extends State<MapScreen> {
           _endPoint!,
         );
 
-        // Actualizar los marcadores en el mapa
+        // Actualizar los marcadores en el mapa Y los nombres
         setState(() {
           _startPoint = snappedStart;
           _endPoint = snappedEnd;
         });
+
+        // ← ACTUALIZAR NOMBRES DESPUÉS DEL AJUSTE
+        _updatePointName(snappedStart, true);
+        _updatePointName(snappedEnd, false);
       }
 
       // Ahora calcular la ruta
@@ -183,7 +228,224 @@ class _MapScreenState extends State<MapScreen> {
       _endPoint = null;
       _routePoints = [];
       _routeDistance = 0;
+      // ← LIMPIAR TAMBIÉN LOS NOMBRES
+      _startPointName = '';
+      _endPointName = '';
     });
+  }
+
+  // ← NUEVO WIDGET MEJORADO PARA MOSTRAR INFORMACIÓN DE PUNTOS
+  Widget _buildPointInfoPanel() {
+    if (_startPoint != null && _endPoint != null && _routePoints.isEmpty) {
+      return Positioned(
+        bottom: 20,
+        left: 20,
+        right: 20,
+        child: Card(
+          color: Colors.white,
+          elevation: 4,
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  "Ruta Seleccionada",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                    color: Colors.blue,
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // Punto de inicio con icono y nombre
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.trip_origin,
+                        color: Colors.green.shade700,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              "Desde:",
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.grey,
+                              ),
+                            ),
+                            _isLoadingStartName
+                                ? const Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 12,
+                                      height: 12,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                    SizedBox(width: 8),
+                                    Text("Obteniendo dirección..."),
+                                  ],
+                                )
+                                : Text(
+                                  _startPointName.isNotEmpty
+                                      ? _startPointName
+                                      : "Cargando dirección...",
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                // Punto de destino con icono y nombre
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.place, color: Colors.red.shade700, size: 24),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              "Hasta:",
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.grey,
+                              ),
+                            ),
+                            _isLoadingEndName
+                                ? const Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 12,
+                                      height: 12,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                    SizedBox(width: 8),
+                                    Text("Obteniendo dirección..."),
+                                  ],
+                                )
+                                : Text(
+                                  _endPointName.isNotEmpty
+                                      ? _endPointName
+                                      : "Cargando dirección...",
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Nota informativa
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        color: Colors.orange.shade700,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          "Los puntos se ajustarán a la calle para vehículos más cercana",
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Botones de acción
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: _clearRoute,
+                        icon: const Icon(Icons.clear, size: 18),
+                        label: const Text("Borrar"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red.shade100,
+                          foregroundColor: Colors.red.shade800,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton.icon(
+                        onPressed: _calculateRoute,
+                        icon: const Icon(Icons.directions, size: 18),
+                        label: const Text("Calcular Ruta"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue.shade100,
+                          foregroundColor: Colors.blue.shade800,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 
   @override
@@ -210,10 +472,11 @@ class _MapScreenState extends State<MapScreen> {
                           ), // Arequipa por defecto
                       initialZoom: 15.0,
                       onTap: (_, point) {
-                        // Alternar entre punto inicial y final
+                        // ← MODIFICADO PARA INCLUIR ACTUALIZACIÓN DE NOMBRES
                         setState(() {
                           if (_startPoint == null) {
                             _startPoint = point;
+                            _updatePointName(point, true); // ← NUEVA LÍNEA
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text("Punto de inicio seleccionado"),
@@ -221,17 +484,20 @@ class _MapScreenState extends State<MapScreen> {
                             );
                           } else if (_endPoint == null) {
                             _endPoint = point;
+                            _updatePointName(point, false); // ← NUEVA LÍNEA
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text("Punto de destino seleccionado"),
                               ),
                             );
-                            // Ya no calculamos la ruta automáticamente
                           } else {
                             // Si ya hay dos puntos, empezar de nuevo
                             _startPoint = point;
                             _endPoint = null;
                             _routePoints = [];
+                            _startPointName = '';
+                            _endPointName = '';
+                            _updatePointName(point, true); // ← NUEVA LÍNEA
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text(
@@ -334,78 +600,8 @@ class _MapScreenState extends State<MapScreen> {
                       onClear: _clearRoute,
                     ),
 
-                  // Panel con botón calcular ruta cuando tengamos inicio y destino
-                  if (_startPoint != null &&
-                      _endPoint != null &&
-                      _routePoints.isEmpty)
-                    Positioned(
-                      bottom: 20,
-                      left: 20,
-                      right: 20,
-                      child: Card(
-                        color: Colors.white,
-                        elevation: 4,
-                        child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text(
-                                "Puntos seleccionados",
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              const Text(
-                                "Los puntos se ajustarán automáticamente a la calle para vehículos más cercana",
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontStyle: FontStyle.italic,
-                                  color: Colors.orange,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                "Inicio: ${_startPoint!.latitude.toStringAsFixed(6)}, ${_startPoint!.longitude.toStringAsFixed(6)}",
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                              Text(
-                                "Destino: ${_endPoint!.latitude.toStringAsFixed(6)}, ${_endPoint!.longitude.toStringAsFixed(6)}",
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                              const SizedBox(height: 16),
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceEvenly,
-                                children: [
-                                  ElevatedButton.icon(
-                                    onPressed: _clearRoute,
-                                    icon: const Icon(Icons.clear),
-                                    label: const Text("Borrar"),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.red.shade100,
-                                      foregroundColor: Colors.red.shade800,
-                                    ),
-                                  ),
-                                  ElevatedButton.icon(
-                                    onPressed: _calculateRoute,
-                                    icon: const Icon(Icons.directions),
-                                    label: const Text("Calcular Ruta"),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.blue.shade100,
-                                      foregroundColor: Colors.blue.shade800,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
+                  // ← REEMPLAZAR EL PANEL ANTERIOR CON EL NUEVO
+                  _buildPointInfoPanel(),
                 ],
               ),
 
